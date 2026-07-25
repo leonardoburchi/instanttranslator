@@ -23,6 +23,11 @@ class LanguageInfo(BaseModel):
     name: str
     english_name: str
     flag: str
+    # Come viene servita all'ascoltatore:
+    #   "hls"  = audio tradotto + sottotitoli (stream in onda)
+    #   "ws"   = audio a bassa latenza su WebSocket (sale piccole, regia)
+    #   "text" = solo sottotitoli (nessun TTS per questa lingua)
+    mode: str = "hls"
 
 
 # --------------------------------------------------------------------------- #

@@ -58,6 +58,11 @@ class SubtitleStore:
         with self._lock:
             self._cues.pop((channel_id, lang), None)
 
+    def clear_channel(self, channel_id: str) -> None:
+        with self._lock:
+            for key in [k for k in self._cues if k[0] == channel_id]:
+                self._cues.pop(key, None)
+
 
 class HlsManager:
     def __init__(self, cfg: HlsConfig, input_samplerate: int) -> None:
@@ -118,7 +123,9 @@ class HlsManager:
                 stream = self._streams.pop((channel_id, lang), None)
                 if stream:
                     stream.stop()
-                self.subtitles.clear(channel_id, lang)
+            # Anche i sottotitoli delle lingue di solo testo, che non hanno
+            # uno stream associato.
+            self.subtitles.clear_channel(channel_id)
 
     def shutdown(self) -> None:
         for cid in list(self._channel_langs):
@@ -151,6 +158,22 @@ class HlsManager:
         stream = self._streams.get((channel_id, FLOOR_LANG))
         if stream is not None:
             stream.feed(pcm)
+
+    def add_text_cue(
+        self, channel_id: str, lang: str, seq: int, text: str,
+        *, start: float, end: float,
+    ) -> None:
+        """Sottotitolo per una lingua servita **senza audio**.
+
+        Costa solo la traduzione: niente TTS, niente ffmpeg. I cue finiscono
+        nello stesso ``subs.json`` cacheabile delle altre lingue, quindi
+        scalano allo stesso modo. Sono ancorati ai tempi del parlato originale:
+        chi legge sta sentendo l'audio della piazza, non uno stream.
+        """
+        self.subtitles.add(channel_id, lang, Cue(
+            seq=seq, start=start + self.cfg.subtitle_offset,
+            end=max(end + self.cfg.subtitle_offset, start + 1.5), text=text,
+        ))
 
     def add_floor_subtitle(
         self, channel_id: str, seq: int, text: str, *, start: float, end: float

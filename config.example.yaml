@@ -108,7 +108,11 @@ delivery:
   max_ws_listeners: 200      # tetto di sicurezza sulle connessioni all'origine
   subtitle_poll_seconds: 3.0 # cadenza di download dei sottotitoli in HLS
   hls_live_sync: 2.0         # quanto indietro sta il player (meno = meno ritardo)
-  audience_languages: broadcast   # broadcast = offri solo le lingue trasmesse
+  # "all"       = all'ascoltatore appaiono tutte le target_languages: audio
+  #               tradotto per quelle in onda, soli sottotitoli per le altre
+  #               (una traduzione a testa, niente TTS né encoder).
+  # "broadcast" = solo quelle con audio in onda.
+  audience_languages: all
   info_cache_seconds: 5
 
 # Accesso alla regia (/admin e /api/admin).
@@ -118,6 +122,8 @@ admin:
 
 state_dir: data              # canali salvati dalla regia (data/channels.json)
 
+# Lingue offerte all'ascoltatore. Quelle con voce Piper installata e in
+# broadcast hanno l'audio tradotto; le altre i soli sottotitoli.
 target_languages: [it, en, es, fr, de]
 
 # Canali predefiniti (poi comanda quello che salvi dalla regia).

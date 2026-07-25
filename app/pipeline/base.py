@@ -55,6 +55,16 @@ class Translator(ABC):
     def translate(self, text: str, source: str, target: str) -> str:
         """Traduce ``text`` da ``source`` a ``target`` (codici brevi: it, en...)."""
 
+    def translate_many(self, text: str, source: str, targets: list[str]) -> dict[str, str]:
+        """Traduce lo stesso testo verso più lingue.
+
+        Esiste per essere implementata **in batch**: su GPU tradurre dodici
+        lingue in una chiamata costa poco più che tradurne una, mentre dodici
+        chiamate in fila costano dodici volte. Con molte lingue è la differenza
+        tra un evento che sta in piedi e uno che accumula ritardo.
+        """
+        return {t: self.translate(text, source, t) for t in targets}
+
 
 class TTSEngine(ABC):
     samplerate: int

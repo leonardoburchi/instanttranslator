@@ -108,11 +108,14 @@ function selectChannel(ch) {
 
   const langs = channelLanguages(ch);
   for (const l of langs) {
+    // Diciamo subito cosa si ottiene: scoprire dopo il tocco che una lingua
+    // non ha la voce è il tipo di sorpresa che genera code all'infopoint.
+    const solotesto = l.mode === 'text';
     wrap.appendChild(el('div', { class: 'lang-card', onclick: () => selectLanguage(l) }, [
       el('span', { class: 'flag' }, l.flag),
       el('div', {}, [
         el('div', { class: 'label' }, l.name),
-        el('div', { class: 'sub' }, l.english_name),
+        el('div', { class: 'sub' }, solotesto ? '📝 solo sottotitoli' : '🔊 voce + sottotitoli'),
       ]),
     ]));
   }
@@ -124,16 +127,19 @@ function selectChannel(ch) {
 
 function selectLanguage(l) {
   state.lang = l;
-  // Scegli la modalità: HLS se disponibile per questa lingua (o FLOOR), altrimenti WS.
+  // Il server dice come va servita questa lingua: audio in onda (hls),
+  // bassa latenza (ws) o soli sottotitoli (text).
   const hlsLangs = state.channel.hls_languages || [];
-  const isHls = state.info.hls_enabled && (l.code === FLOOR_LANG_INFO.code || hlsLangs.includes(l.code));
-  state.mode = isHls ? 'hls' : 'ws';
+  if (l.code === FLOOR_LANG_INFO.code) state.mode = 'hls';
+  else if (l.mode) state.mode = l.mode;
+  else state.mode = (state.info.hls_enabled && hlsLangs.includes(l.code)) ? 'hls' : 'ws';
 
   document.getElementById('live-title').textContent = state.channel.name;
   document.getElementById('live-sub').textContent =
     `${l.flag} ${l.name} · originale ${(langInfo(state.channel.source_language) || {}).name || ''}`;
   const modeBadge = document.getElementById('live-mode');
-  modeBadge.textContent = state.mode === 'hls' ? '📡 Scala (HLS)' : '⚡ Bassa latenza';
+  modeBadge.textContent = { hls: '📡 Voce tradotta', ws: '⚡ Bassa latenza',
+                            text: '📝 Solo sottotitoli' }[state.mode] || '';
 
   state.finals = []; state.partial = null; state.hlsCues = [];
   state.hlsRetry = 0; state.wsRetry = 0; state.renderKey = '';
@@ -143,7 +149,22 @@ function selectLanguage(l) {
   requestWakeLock();
 
   if (state.mode === 'hls') connectHLS();
+  else if (state.mode === 'text') connectText();
   else connectWS();
+}
+
+// Solo sottotitoli: nessun audio da scaricare, solo il JSON cacheabile dei
+// cue. È il livello che permette di offrire tutte le lingue senza un TTS e un
+// encoder per ciascuna.
+function connectText() {
+  const btn = document.getElementById('audio-toggle');
+  btn.classList.add('hidden');
+  document.getElementById('audio-hint').textContent =
+    'Questa lingua è disponibile con i sottotitoli.';
+  setStatus(true, 'In onda');
+  state.subTimer = setInterval(pollSubtitles, Math.max(state.pollSeconds, 1) * 1000);
+  state.syncTimer = setInterval(syncHLSSubtitles, 250);
+  pollSubtitles();
 }
 
 function resetAudioUI() {

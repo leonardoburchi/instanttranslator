@@ -244,8 +244,9 @@ Safari), quindi restano allineati anche con buffer diversi tra telefoni.
 | Richieste playlist | 1/s per ascoltatore → **cache 1 s** su nginx, 1 req/s all'origine |
 | Richieste sottotitoli | 1 ogni 3 s → ~830 req/s su nginx, 1 req/s all'origine |
 | Segmenti `.ts` | immutabili → cache lunga, un solo MISS per segmento |
-| GPU | 1 ASR per canale + 1 traduzione per (canale × lingua) per enunciato |
-| CPU | 1 TTS + 1 ffmpeg per (canale × lingua) + 1 per il FLOOR |
+| GPU | 1 ASR per canale + 1 traduzione **in batch** per canale per enunciato |
+| CPU | 1 TTS + 1 ffmpeg per (canale × lingua **con audio**) + 1 per il FLOOR |
+| Lingue di solo testo | nessun TTS, nessun encoder: solo la traduzione |
 
 **Regole pratiche non negoziabili per una piazza:**
 
@@ -261,8 +262,9 @@ Safari), quindi restano allineati anche con buffer diversi tra telefoni.
    progettato per la densità (molti AP, 5 GHz, band steering).
 5. **HTTPS + QR code.** Un dominio corto e un QR sui volantini/schermi; su HTTP
    alcuni browser mostrano avvisi che in piazza si traducono in supporto.
-6. **`broadcast_languages` minime.** Ogni lingua in più = 1 TTS + 1 ffmpeg per
-   canale, sempre attivi. Offri solo le lingue che servono davvero.
+6. **`broadcast_languages` minime.** Ogni lingua **con audio** in più = 1 TTS +
+   1 ffmpeg per canale, sempre attivi. Metti la voce sulle lingue che servono
+   davvero e lascia le altre ai sottotitoli, che costano quasi nulla.
 
 ### Latenza attesa (onesta)
 
@@ -463,12 +465,45 @@ engine:
 
 ---
 
-## Lingue
+## Lingue: tre livelli di servizio
 
 Definite in `app/languages.py` con i codici per ciascun motore (Whisper / NLLB /
-Piper). Aggiungerne una la rende disponibile sia come lingua sorgente sia come
-target. `target_languages` in `config.yaml` limita le lingue scelibili
-dall'ascoltatore; `broadcast_languages` per canale limita quelle trasmesse in HLS.
+Piper). L'ascoltatore le vede **tutte**, ma non tutte costano uguale:
+
+| Livello | Cosa riceve | Costo per canale | Come si attiva |
+|---|---|---|---|
+| **Audio** (`hls`) | voce tradotta + sottotitoli | 1 TTS + 1 encoder ffmpeg **sempre attivi**, e la voce Piper installata | la lingua è in `broadcast_languages` |
+| **Sottotitoli** (`text`) | solo testo, sincronizzato al parlato | 1 traduzione per frase (in **batch** con le altre) | è in `target_languages` ma non in broadcast |
+| **Bassa latenza** (`ws`) | audio PCM + testo su WebSocket | ~350 kbps e una connessione per ascoltatore | solo con HLS disattivo, o `delivery.ws_audio_with_hls` |
+
+Così si offrono dodici lingue senza moltiplicare per dodici il costo
+dell'evento: voce per le principali, testo per tutte le altre. Il livello è
+scritto sulla card della lingua (“🔊 voce + sottotitoli” / “📝 solo
+sottotitoli”), così nessuno tocca una lingua aspettandosi l'audio e resta in
+silenzio.
+
+```yaml
+target_languages: [it, en, es, fr, de, pt, nl, pl, ru, uk, zh, ar]
+delivery:
+  audience_languages: all       # "broadcast" = mostra solo quelle con audio
+channels:
+  - id: palco
+    source_language: it
+    broadcast_languages: [en, es, fr, de]   # queste hanno anche la voce
+```
+
+Senza `broadcast_languages` un canale trasmette **tutte** le target che hanno
+una voce installata, tranne la propria lingua sorgente (l'originale è già sullo
+stream “🎤 Originale”, rifarlo col TTS sprecherebbe un encoder).
+
+**Traduzione in batch**: le lingue di una stessa frase vengono tradotte in una
+sola chiamata a NLLB. Misurato su questa GPU con 11 lingue: **227 ms contro
+1041 ms** in fila. È ciò che rende praticabile offrirle tutte — con le chiamate
+sequenziali la traduzione da sola mangerebbe la GPU che serve all'ASR.
+
+I sottotitoli di ogni lingua, audio o testo che sia, escono dallo stesso
+`subs.json` cacheabile: 2500 telefoni fanno ~830 richieste/s a nginx e **1
+richiesta/s** all'origine, per lingua.
 
 ---
 

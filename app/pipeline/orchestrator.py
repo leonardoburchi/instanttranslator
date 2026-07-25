@@ -73,7 +73,13 @@ class Orchestrator:
             return []
         from ..languages import exists
 
-        langs = ch.broadcast_languages or self.cfg.target_languages
+        if ch.broadcast_languages is not None:
+            langs = list(ch.broadcast_languages)
+        else:
+            # Senza una lista esplicita si trasmettono tutte le target *tranne*
+            # la lingua del canale: l'originale c'è già sullo stream FLOOR, e
+            # rifarlo col TTS sprecherebbe un encoder e una voce.
+            langs = [l for l in self.cfg.target_languages if l != ch.source_language]
         wanted = [l for l in langs if exists(l)]
         # Trasmettere una lingua fuori da target_languages costa un TTS e un
         # ffmpeg per canale senza che nessuno possa selezionarla.
@@ -96,6 +102,23 @@ class Orchestrator:
                 channel_id, ", ".join(missing),
             )
         return usable
+
+    def _text_languages(self, channel_id: str) -> list[str]:
+        """Lingue servite con i soli sottotitoli (traduzione sì, TTS no).
+
+        Sono le lingue target che non hanno audio in onda: costano una
+        traduzione a testa e permettono di offrire *tutte* le lingue senza
+        moltiplicare per dodici il TTS e gli encoder.
+        """
+        if self.hls is None or self.cfg.delivery.audience_languages != "all":
+            return []
+        from ..languages import exists
+
+        broadcast = self.hls.languages(channel_id)
+        return [
+            l for l in self.cfg.target_languages
+            if exists(l) and l not in broadcast
+        ]
 
     # -- query ---------------------------------------------------------------
     def is_running(self, channel_id: str) -> bool:
@@ -283,22 +306,32 @@ class Orchestrator:
             rt = self._runtimes.get(channel_id)
             speaker = rt.source.speaker_profile() if rt is not None else None
 
+            # Prima si stabilisce *cosa serve*, poi si traduce tutto in un colpo:
+            # una chiamata in batch invece di una per lingua.
+            work: dict[str, tuple[bool, bool, object]] = {}
             for lang in ws_langs | hls_langs:
+                is_final = seg.is_final
+                want_sub_ws = self.hub.has_subscribers(topic_subtitle(channel_id, lang))
+                want_audio_ws = is_final and self.hub.has_subscribers(
+                    topic_audio(channel_id, lang))
+                hls_stream = self.hls.get(channel_id, lang) if (self.hls and is_final) else None
+                # Niente da fare per questa lingua? salta (risparmio traduzione/TTS).
+                if want_sub_ws or want_audio_ws or hls_stream:
+                    work[lang] = (want_sub_ws, want_audio_ws, hls_stream)
+
+            try:
+                texts = translator.translate_many(
+                    seg.text, seg.source_language, list(work)) if work else {}
+            except Exception:
+                log.exception("errore traduzione da %s", seg.source_language)
+                texts = {}
+
+            for lang, (want_sub_ws, want_audio_ws, hls_stream) in work.items():
                 sub_topic = topic_subtitle(channel_id, lang)
                 audio_topic = topic_audio(channel_id, lang)
                 is_final = seg.is_final
-                want_sub_ws = self.hub.has_subscribers(sub_topic)
-                want_audio_ws = is_final and self.hub.has_subscribers(audio_topic)
-                hls_stream = self.hls.get(channel_id, lang) if (self.hls and is_final) else None
-
-                # Niente da fare per questa lingua? salta (risparmio traduzione/TTS).
-                if not (want_sub_ws or want_audio_ws or hls_stream):
-                    continue
-
-                try:
-                    text = translator.translate(seg.text, seg.source_language, lang)
-                except Exception:
-                    log.exception("errore traduzione %s->%s", seg.source_language, lang)
+                text = texts.get(lang)
+                if not text:
                     continue
 
                 if want_sub_ws:
@@ -330,6 +363,34 @@ class Orchestrator:
                         ))
                     if hls_stream is not None:
                         self.hls.feed(channel_id, lang, seg.seq, pcm, text)
+
+            # Lingue di solo testo: tradotte *dopo* quelle con audio, che non
+            # devono aspettare in coda sulla GPU dietro a dodici traduzioni.
+            if seg.is_final:
+                text_langs = [
+                    l for l in self._text_languages(channel_id)
+                    if l not in ws_langs and l not in hls_langs
+                ]
+                if not text_langs:
+                    continue
+                try:
+                    texts = translator.translate_many(
+                        seg.text, seg.source_language, text_langs)
+                except Exception:
+                    log.exception("errore traduzione (sottotitoli) da %s",
+                                  seg.source_language)
+                    continue
+                for lang, text in texts.items():
+                    if not text:
+                        continue
+                    self.hls.add_text_cue(
+                        channel_id, lang, seg.seq, text,
+                        start=seg.t_start or seg.ts, end=seg.t_end or seg.ts,
+                    )
+                    self.hub.publish_threadsafe(topic_subtitle(channel_id, lang), {
+                        "type": "subtitle", "channel": channel_id, "lang": lang,
+                        "seq": seg.seq, "text": text, "final": True, "ts": seg.ts,
+                    })
 
     # -- cattura audio (solo reale) ------------------------------------------
     def _sync_capture(self) -> None:

@@ -34,21 +34,41 @@ class AppContext:
         return self.cfg.ws_audio_allowed
 
     def audience_language_infos(self, channel_id: str) -> list[LanguageInfo]:
-        """Lingue che l'ascoltatore può scegliere su questo canale.
+        """Lingue che l'ascoltatore può scegliere su questo canale, con il modo.
 
-        Con HLS attivo, per default si offrono solo le lingue realmente
-        trasmesse: una lingua fuori broadcast ricadrebbe sull'audio PCM via
-        WebSocket, cioè ~350 kbps e una connessione persistente sull'origine
-        per ogni telefono. Con 2500 persone non è un'opzione.
+        Tre livelli di servizio, in ordine di costo:
+
+        * ``hls``  – audio tradotto in onda (un TTS e un ffmpeg per lingua);
+        * ``ws``   – audio a bassa latenza su WebSocket (~350 kbps e una
+          connessione persistente per telefono: regia e sale piccole);
+        * ``text`` – soli sottotitoli, serviti dalla stessa cache degli altri:
+          costano una traduzione e scalano come l'audio.
+
+        Così si possono offrire *tutte* le lingue senza moltiplicare per dodici
+        il costo dell'evento: audio per quelle principali, testo per le altre.
         """
-        codes = [l.code for l in self.target_languages()]
-        if self.hls is not None and self.cfg.delivery.audience_languages == "broadcast":
-            broadcast = set(self.hls_languages(channel_id))
-            codes = [c for c in codes if c in broadcast]
+        broadcast = set(self.hls_languages(channel_id)) if self.hls is not None else set()
+        show_all = self.cfg.delivery.audience_languages == "all" or self.hls is None
+        out: list[LanguageInfo] = []
+        for lang in self.target_languages():
+            if lang.code in broadcast:
+                mode = "hls"
+            elif not show_all:
+                continue
+            elif self.hls is not None:
+                mode = "text"          # niente audio: sottotitoli cacheabili
+            else:
+                mode = "ws"            # senza HLS si passa dal WebSocket
+            out.append(LanguageInfo(
+                code=lang.code, name=lang.name, english_name=lang.english_name,
+                flag=lang.flag, mode=mode,
+            ))
+        return out
+
+    def text_languages(self, channel_id: str) -> list[str]:
+        """Lingue offerte come soli sottotitoli (traduzione sì, TTS no)."""
         return [
-            LanguageInfo(code=c, name=LANGUAGES[c].name,
-                         english_name=LANGUAGES[c].english_name, flag=LANGUAGES[c].flag)
-            for c in codes if c in LANGUAGES
+            l.code for l in self.audience_language_infos(channel_id) if l.mode == "text"
         ]
 
     def hls_languages(self, channel_id: str) -> list[str]:
@@ -64,8 +84,14 @@ class AppContext:
         if ch is None:
             return []
         targets = self.cfg.target_languages
+        if ch.broadcast_languages is not None:
+            candidates = list(ch.broadcast_languages)
+        else:
+            # Come nell'orchestratore: la lingua del canale non si ritrasmette
+            # col TTS, l'originale è già sullo stream FLOOR.
+            candidates = [l for l in targets if l != ch.source_language]
         configured = [
-            l for l in (ch.broadcast_languages or targets)
+            l for l in candidates
             if l in LANGUAGES and self.engines.tts.has_voice(l)
             and (not targets or l in targets)
         ]

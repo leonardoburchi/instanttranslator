@@ -215,9 +215,12 @@ class DeliveryConfig(BaseModel):
     # 1 s, 2.0 è un buon compromesso in piazza.
     hls_live_sync: float = 2.0
     # Lingue mostrate all'ascoltatore quando HLS è attivo:
-    #   "broadcast" = solo quelle realmente trasmesse (consigliato)
-    #   "all"       = tutte le target (le altre ricadono su WebSocket)
-    audience_languages: Literal["broadcast", "all"] = "broadcast"
+    #   "all"       = tutte le target. Quelle senza audio in onda vengono
+    #                 offerte **con i soli sottotitoli**, che costano solo una
+    #                 traduzione (niente TTS né ffmpeg) e si servono dalla
+    #                 stessa cache dei sottotitoli: scalano come l'audio.
+    #   "broadcast" = solo quelle con audio in onda.
+    audience_languages: Literal["all", "broadcast"] = "all"
     # Secondi di cache dichiarati su /api/info (nginx/CDN lo rispettano).
     info_cache_seconds: int = 5
 

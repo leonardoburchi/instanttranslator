@@ -38,16 +38,31 @@ class NLLBTranslator(Translator):
         self._cache: dict[tuple[str, str, str], str] = {}
 
     def translate(self, text: str, source: str, target: str) -> str:
-        if source == target or not text.strip():
-            return text
+        return self.translate_many(text, source, [target]).get(target, text)
 
-        key = (source, target, text)
-        cached = self._cache.get(key)
-        if cached is not None:
-            return cached
+    def translate_many(self, text: str, source: str, targets: list[str]) -> dict[str, str]:
+        """Traduce lo stesso testo verso più lingue in **una sola** chiamata.
+
+        Il decoder lavora sull'intero batch in parallelo: dodici lingue costano
+        molto meno di dodici traduzioni in fila, e la GPU resta libera per
+        l'ASR incrementale.
+        """
+        out: dict[str, str] = {}
+        pending: list[str] = []
+        for target in targets:
+            if source == target or not text.strip():
+                out[target] = text
+                continue
+            cached = self._cache.get((source, target, text))
+            if cached is not None:
+                out[target] = cached
+            else:
+                pending.append(target)
+        if not pending:
+            return out
 
         src_code = get_lang(source).nllb
-        tgt_code = get_lang(target).nllb
+        tgt_codes = [get_lang(t).nllb for t in pending]
 
         with self._lock:
             self._tokenizer.src_lang = src_code
@@ -55,19 +70,22 @@ class NLLBTranslator(Translator):
                 self._tokenizer.encode(text)
             )
             results = self._translator.translate_batch(
-                [tokens],
-                target_prefix=[[tgt_code]],
+                [tokens] * len(pending),
+                target_prefix=[[code] for code in tgt_codes],
                 beam_size=self._beam_size,
                 max_decoding_length=self._max_decoding_length,
             )
-            out_tokens = results[0].hypotheses[0]
-            if out_tokens and out_tokens[0] == tgt_code:
-                out_tokens = out_tokens[1:]
-            ids = self._tokenizer.convert_tokens_to_ids(out_tokens)
-            translated = self._tokenizer.decode(ids, skip_special_tokens=True).strip()
+            for target, code, result in zip(pending, tgt_codes, results):
+                out_tokens = result.hypotheses[0]
+                if out_tokens and out_tokens[0] == code:
+                    out_tokens = out_tokens[1:]
+                ids = self._tokenizer.convert_tokens_to_ids(out_tokens)
+                out[target] = self._tokenizer.decode(
+                    ids, skip_special_tokens=True).strip()
 
         # Cache limitata per i parziali ricorrenti.
         if len(self._cache) > 4000:
             self._cache.clear()
-        self._cache[key] = translated
-        return translated
+        for target in pending:
+            self._cache[(source, target, text)] = out[target]
+        return out
