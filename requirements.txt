@@ -1,0 +1,15 @@
+# --- Core (richiesto sempre, anche in mock mode) ---
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+pydantic-settings==2.7.1
+PyYAML==6.0.2
+numpy==2.2.1
+sounddevice==0.5.1          # cattura audio multicanale (PortAudio)
+websockets==14.1
+
+# --- Motori ML reali (engine.mode = "real") ---
+# Sono in requirements-ml.txt (con le versioni verificate su Windows + CUDA):
+#   pip install -r requirements-ml.txt
+# Nota: piper-tts deve essere >= 1.4 (la 1.2 richiede piper-phonemize, che non
+# ha wheel per Windows).

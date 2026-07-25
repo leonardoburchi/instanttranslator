@@ -1,0 +1,36 @@
+# Dipendenze dei motori ML reali (engine.mode = "real").
+# Versioni verificate su Windows 11 + Python 3.12 + GPU NVIDIA RTX 5070 (CUDA).
+#
+#   pip install -r requirements.txt
+#   pip install -r requirements-ml.txt
+#
+# GPU: ASR (Whisper) e traduzione (NLLB) girano su GPU via CTranslate2, che
+# trova da solo le CUDA runtime libs (cuBLAS/cuDNN). Se la GPU non viene
+# rilevata, installa anche:  pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
+#
+# TTS: Piper gira su CPU con onnxruntime (già incluso qui) ed è real-time.
+# La fonemizzazione (espeak-ng) è inclusa nel wheel di piper-tts 1.4.x:
+# nessun bisogno di piper-phonemize (che non ha wheel per Windows).
+
+# ASR (faster-whisper) + backend CTranslate2 (Whisper + NLLB su GPU)
+faster-whisper>=1.1.0
+ctranslate2>=4.5,<5
+
+# Traduzione: tokenizer NLLB (transformers usa solo il tokenizer, niente torch a runtime)
+transformers>=4.44
+sentencepiece>=0.2.0
+
+# TTS offline, Windows-friendly, espeak-ng incluso
+piper-tts>=1.4.0
+
+# Download/conversione modelli
+huggingface_hub>=0.30
+hf_xet                      # opzionale: download più veloci da Hugging Face
+
+# --- SOLO per la conversione di NLLB in CTranslate2 (build-time, una tantum) ---
+# ct2-transformers-converter carica il modello via transformers, che per leggere
+# i pesi richiede torch. NON serve a runtime. Installalo solo per il download:
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+#
+# Per usare Piper su GPU invece che CPU (opzionale, tts.use_cuda: true):
+#   pip install onnxruntime-gpu   # al posto di onnxruntime

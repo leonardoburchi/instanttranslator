@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>Instant Translator</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">🎧 Instant Translator <small>traduzione live</small></div>
+    <nav><a href="/admin">Regia</a></nav>
+  </header>
+
+  <main class="container">
+    <div id="banner" class="banner hidden"></div>
+
+    <!-- Step 1: scelta canale -->
+    <section id="view-channels">
+      <h1>Scegli il canale</h1>
+      <p class="subtitle-intro">Seleziona la sala o il relatore che vuoi seguire.</p>
+      <div id="channels" class="grid"></div>
+      <p id="no-channels" class="banner hidden">Nessun canale attivo al momento.</p>
+    </section>
+
+    <!-- Step 2: scelta lingua -->
+    <section id="view-languages" class="hidden">
+      <div class="back" id="back-to-channels">← Torna ai canali</div>
+      <h1 id="lang-title">Scegli la tua lingua</h1>
+      <p class="subtitle-intro" id="lang-intro"></p>
+      <div id="languages" class="lang-grid"></div>
+    </section>
+
+    <!-- Step 3: live -->
+    <section id="view-live" class="hidden">
+      <div class="back" id="back-from-live">← Cambia canale o lingua</div>
+      <div class="live-header">
+        <div>
+          <div class="live-title" id="live-title"></div>
+          <div class="live-sub" id="live-sub"></div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span id="live-mode" class="badge"></span>
+          <span id="live-status" class="badge off"><span class="dot"></span><span>—</span></span>
+        </div>
+      </div>
+
+      <div class="audio-controls">
+        <button id="audio-toggle" class="btn primary">▶︎ Attiva audio</button>
+        <div class="vol">
+          <input type="range" id="volume" min="0" max="100" value="100" />
+        </div>
+        <span class="live-sub" id="audio-hint">L'audio richiede un tocco per partire.</span>
+      </div>
+      <audio id="hls-audio" class="hidden" playsinline></audio>
+
+      <div class="subtitles" id="subtitles">
+        <p class="empty">In attesa dell'audio…</p>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/js/vendor/hls.min.js"></script>
+  <script type="module" src="/static/js/listener.js"></script>
+</body>
+</html>

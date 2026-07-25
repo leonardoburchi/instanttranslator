@@ -1,0 +1,145 @@
+# Copia questo file in config.yaml e adattalo.
+# In assenza di config.yaml l'app parte con i default (mock mode).
+# Le variabili d'ambiente IT_* sovrascrivono questi valori
+# (es. IT_ENGINE__MODE=real, IT_ADMIN__TOKEN=segreto, IT_HLS__ENABLED=true).
+
+server:
+  host: 0.0.0.0
+  port: 8000
+
+audio:
+  # Rate di ELABORAZIONE (Whisper vuole 16 kHz). NON è il rate della scheda:
+  # i mixer digitali (XR18) girano a 48 kHz e l'app ricampiona da sola.
+  samplerate: 16000
+  blocksize: 1600              # 100 ms a 16 kHz
+  # Indice PortAudio oppure parte del nome del device (più robusto: gli indici
+  # USB si spostano tra i riavvii). Per l'XR18 su Windows: "IN 1-8".
+  default_input_device: null
+  device_samplerate: null      # null = rate nativo del device (48000 sui mixer)
+  host_api: WASAPI             # preferenza quando il device è indicato per nome
+  latency: high                # buffer generosi = meno glitch in un evento live
+  wasapi_exclusive: false      # accesso esclusivo alla scheda (di norma inutile)
+
+engine:
+  # "mock"  -> nessun modello/GPU: sorgenti e traduzioni sintetiche, audio a tono.
+  #            Perfetto per provare tutto il flusso e l'interfaccia.
+  # "real"  -> faster-whisper + NLLB + Piper (richiede GPU e i modelli scaricati).
+  mode: mock
+
+  asr:
+    model: large-v3        # tiny/base/small/medium/large-v3
+    device: auto           # auto/cuda/cpu
+    compute_type: float16  # su GPU; usa int8 su CPU
+    beam_size: 1
+    # Filtri anti-allucinazione (Whisper inventa frasi sul non-parlato).
+    no_speech_threshold: 0.6
+    logprob_threshold: -1.0
+    drop_repeats: true
+
+  # Traduzione incrementale: manda in onda i pezzi di frase già stabili senza
+  # aspettare il punto fermo. Meno ritardo, qualità un filo inferiore perché il
+  # traduttore non vede il seguito della frase. Costa ~1 inferenza/s per canale
+  # che sta parlando: con molti canali alza "interval" o usa un modello minore.
+  streaming:
+    enabled: true
+    interval: 1.0            # ogni quanto ri-trascrivere mentre si parla
+    stability_margin: 0.5    # audio che deve seguire una parola perché sia definitiva
+    min_commit_words: 6      # più basso = meno ritardo, pezzi più corti
+    max_pending_seconds: 4.0 # oltre, manda in onda comunque quel che è stabile
+    min_cut_gap: 0.08        # pausa minima dove può cadere il taglio dell'audio
+    trim_back_seconds: 0.25
+
+  vad:
+    mode: adaptive         # adaptive = la soglia segue il rumore di fondo
+    noise_margin_db: 10.0  # quanto sopra il fondo per aprire
+    hysteresis_db: 4.0     # isteresi in chiusura
+    absolute_floor: 0.004  # rms minimo assoluto (sotto è silenzio comunque)
+    energy_threshold: 0.012  # usata solo con mode: fixed
+    silence_seconds: 0.7   # pausa che chiude l'enunciato
+    min_utterance_seconds: 0.4
+    max_utterance_seconds: 12.0
+    preroll_seconds: 0.3   # audio tenuto prima dell'attacco (prima sillaba)
+    partial_interval: 1.5
+    partials: true         # parziali (generati solo se qualcuno li guarda)
+
+  translate:
+    model_dir: models/nllb-200-distilled-600M-ct2
+    tokenizer: facebook/nllb-200-distilled-600M
+    device: auto
+    compute_type: float16
+    beam_size: 2
+    max_decoding_length: 256
+
+  tts:
+    voices_dir: models/piper
+    use_cuda: false        # Piper su CPU è già real-time; true richiede onnxruntime-gpu
+    samplerate: 22050
+    length_scale: 1.0      # <1 = parlato più veloce (recupera ritardo)
+    # Avvicina la voce della traduzione a quella del microfono: sceglie tra le
+    # voci installate quella con il registro più vicino (serve averne più di
+    # una: scaricale con --pairs) e corregge il residuo di altezza.
+    # Non è clonazione della voce: vedi README.
+    match_speaker: true
+    max_pitch_shift: 0.25  # ±25% di altezza (circa ±4 semitoni)
+    match_duration: true   # la traduzione dura quanto l'originale (±20%)
+    max_rate_shift: 0.2
+
+# Consegna scalabile HLS per grandi platee (richiede ffmpeg nel PATH).
+# Disattivo di default: con enabled=false si usa solo il WebSocket a bassa latenza.
+hls:
+  enabled: false
+  ffmpeg: ffmpeg
+  output_dir: data/hls
+  segment_time: 1.0          # durata segmenti (s)
+  list_size: 10              # segmenti nella playlist
+  delete_threshold: 30       # segmenti tenuti oltre la playlist (client lenti)
+  audio_codec: aac           # massima compatibilità (iOS incluso)
+  audio_bitrate: 64k
+  output_samplerate: 44100
+  max_backlog: 4.0           # tetto all'arretrato TTS (evita ritardo crescente)
+  subtitle_window: 30.0      # secondi di sottotitoli mantenuti
+  subtitle_offset: 0.0       # ritocco fine sync sottotitoli (s)
+  floor: true                # stream "Originale" (audio sorgente, no GPU)
+
+# Come arriva l'audio agli ascoltatori.
+delivery:
+  ws_audio: true             # audio PCM su WebSocket (regia, sale piccole)
+  ws_audio_with_hls: false   # ...anche con HLS attivo: sconsigliato in piazza
+  max_ws_listeners: 200      # tetto di sicurezza sulle connessioni all'origine
+  subtitle_poll_seconds: 3.0 # cadenza di download dei sottotitoli in HLS
+  hls_live_sync: 2.0         # quanto indietro sta il player (meno = meno ritardo)
+  audience_languages: broadcast   # broadcast = offri solo le lingue trasmesse
+  info_cache_seconds: 5
+
+# Accesso alla regia (/admin e /api/admin).
+admin:
+  require_auth: true
+  token: null                # null = generato all'avvio e scritto nel log
+
+state_dir: data              # canali salvati dalla regia (data/channels.json)
+
+target_languages: [it, en, es, fr, de]
+
+# Canali predefiniti (poi comanda quello che salvi dalla regia).
+# channel_index = colonna dentro lo stream multicanale, parte da 0.
+#   XR18 device "IN 1-8" -> USB send 1..8 = indici 0..7
+#   Mappali con: python scripts/audio_probe.py --device "IN 1-8"
+# broadcast_languages = lingue trasmesse in HLS (assente = tutte le target).
+channels:
+  - id: ch1
+    name: "Sala Plenaria"
+    description: "Relatore principale"
+    source_language: it
+    input_device: null       # null = default_input_device
+    channel_index: 0
+    gain_db: 0.0             # ritocco digitale del livello
+    floor_channel_index: null  # canale per lo stream "Originale" (es. main LR)
+    enabled: true
+    # broadcast_languages: [en, es, fr]
+  - id: ch2
+    name: "Sala B"
+    description: "Workshop tecnico"
+    source_language: en
+    input_device: null
+    channel_index: 1
+    enabled: true

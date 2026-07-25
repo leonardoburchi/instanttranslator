@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Regia · Instant Translator</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">🎛️ Instant Translator <small>regia</small></div>
+    <nav><a href="/">Vista ascoltatore</a></nav>
+  </header>
+
+  <main class="container">
+    <!-- Accesso: token stampato nel log di avvio (o fissato in config.yaml) -->
+    <section id="auth-gate" class="panel hidden">
+      <h2 style="margin-top:0">🔒 Accesso regia</h2>
+      <p class="subtitle-intro" id="auth-msg"></p>
+      <div class="form-grid">
+        <div class="field">
+          <label>Token</label>
+          <input id="auth-token" type="password" placeholder="token della regia" />
+        </div>
+        <div class="field"><button id="auth-btn" class="btn primary">Entra</button></div>
+      </div>
+    </section>
+
+    <div id="main-ui">
+      <div id="banner" class="banner hidden"></div>
+
+      <h1>Regia canali</h1>
+      <p class="subtitle-intro">
+        Assegna a ogni flusso audio una lingua, un nome e una descrizione. Avvia i canali per metterli in onda.
+        <span id="audio-note" class="live-sub"></span>
+      </p>
+
+      <div class="panel">
+        <h2 style="margin-top:0">➕ Nuovo canale</h2>
+        <div class="form-grid">
+          <div class="field">
+            <label>ID <span class="live-sub">(niente spazi: finisce nell'URL)</span></label>
+            <input id="new-id" placeholder="sala-c" />
+          </div>
+          <div class="field"><label>Nome</label><input id="new-name" placeholder="Sala C" /></div>
+          <div class="field"><label>Descrizione</label><input id="new-desc" placeholder="Relatore ospite" /></div>
+          <div class="field"><label>Lingua sorgente</label><select id="new-lang"></select></div>
+          <div class="field"><label>Device audio</label><select id="new-device"></select></div>
+          <div class="field"><label>Canale (indice)</label><input id="new-index" type="number" min="0" value="0" /></div>
+          <div class="field hls-field hidden"><label>HLS lingue (codici, vuoto = tutte)</label><input id="new-hls" placeholder="en,es,fr" /></div>
+          <div class="field"><button id="add-btn" class="btn primary">Aggiungi</button></div>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Stato</th><th>ID</th><th>Nome</th><th>Descrizione</th>
+              <th>Lingua</th><th>Device</th><th>Ch</th><th>dB</th><th>Livello</th>
+              <th id="th-hls" class="hidden">HLS lingue</th><th>Ascolt.</th><th>Azioni</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+
+      <div class="panel" style="margin-top:24px">
+        <h2 style="margin-top:0">🎙️ Monitor sorgente <span id="monitor-label" class="live-sub"></span></h2>
+        <div id="monitor" class="monitor"><div class="line">Seleziona “Monitor” su un canale per vedere la trascrizione live.</div></div>
+      </div>
+    </div>
+  </main>
+
+  <script type="module" src="/static/js/admin.js"></script>
+</body>
+</html>

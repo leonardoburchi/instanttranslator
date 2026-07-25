@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Models & data (large, downloaded separately)
+models/
+*.onnx
+*.bin
+*.ct2/
+data/
+
+# Config with secrets / local overrides
+config.yaml
+config.local.yaml
+
+# Logs / runtime
+*.log
+logs/
+.DS_Store
+
+# IDE
+.idea/
+.vscode/

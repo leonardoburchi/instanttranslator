@@ -1,0 +1,12 @@
+INFO:     Started server process [37596]
+INFO:     Waiting for application startup.
+2026-06-28 16:47:28,951 INFO    instanttranslator.pipeline: inizializzo motori in modalità 'real'
+2026-06-28 16:47:30,928 INFO    instanttranslator.asr: carico Whisper 'small' su cuda (float16)
+2026-06-28 16:47:32,729 INFO    instanttranslator.translate: carico NLLB da models/nllb-200-distilled-600M-ct2 su cuda
+2026-06-28 16:47:35,139 INFO    instanttranslator: avvio in modalità 'real' su 127.0.0.1:8000
+2026-06-28 16:47:35,142 INFO    faster_whisper: Processing audio with duration 00:01.000
+2026-06-28 16:47:35,155 INFO    instanttranslator.audio: stream avviato device=None canali=1 sr=16000
+2026-06-28 16:47:35,207 INFO    instanttranslator.orchestrator: canale 'ch1' avviato
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+2026-06-28 16:47:35,476 INFO    instanttranslator.pipeline: warmup motori completato in 0.3s
